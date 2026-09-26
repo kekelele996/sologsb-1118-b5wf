@@ -6,3 +6,16 @@ export { ARTIFACT_CATEGORIES, COMPLETENESS } from './artifact'
 export type { Artifact, ArtifactCategory, Completeness } from './artifact'
 export { RELATION_TYPES, RELATION_BASES } from './relation'
 export type { Relation, RelationType, RelationBasis } from './relation'
+export {
+  SAMPLE_TYPES,
+  TEST_PURPOSES,
+  SAMPLE_STATUSES,
+  SAMPLE_LOG_TYPES,
+  SAMPLE_GRACE_DAYS,
+  sampleStatus,
+  isSampleCodeDuplicated,
+  isDepthOutOfRange,
+  daysPastDue,
+  isSampleOverdue
+} from './sample'
+export type { Sample, SampleLog, SampleType, TestPurpose, SampleStatus, SampleLogType } from './sample'

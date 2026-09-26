@@ -1,22 +1,23 @@
 import { onUnmounted, reactive } from 'vue'
 import type { StoreApi } from 'zustand/vanilla'
 import Dexie, { type Table } from 'dexie'
-import type { Artifact, Relation, Stratum, Trench } from '@/types'
+import type { Artifact, Relation, Sample, Stratum, Trench } from '@/types'
 
 /** IndexedDB 数据结构版本号 */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export interface MetaRow {
   key: string
   value: number
 }
 
-/** Dexie 封装：探方 / 地层单位 / 出土物 / 层位关系 四张表 + 元数据表 */
+/** Dexie 封装：探方 / 地层单位 / 出土物 / 层位关系 / 送检样品 五张表 + 元数据表 */
 class TrenchLogDb extends Dexie {
   trenches!: Table<Trench, string>
   strata!: Table<Stratum, string>
   artifacts!: Table<Artifact, string>
   relations!: Table<Relation, string>
+  samples!: Table<Sample, string>
   meta!: Table<MetaRow, string>
 
   constructor() {
@@ -29,7 +30,7 @@ class TrenchLogDb extends Dexie {
       meta: 'key'
     })
     // v2：地层单位新增「开口层位」字段，迁移时为历史数据补齐默认值
-    this.version(SCHEMA_VERSION)
+    this.version(2)
       .stores({
         trenches: 'id, code, area, backfilled',
         strata: 'id, trenchId, code, type, topDepth',
@@ -50,6 +51,15 @@ class TrenchLogDb extends Dexie {
             }
           })
       })
+    // v3：新增送检样品表（土样、炭样等实验室送检台账）
+    this.version(SCHEMA_VERSION).stores({
+      trenches: 'id, code, area, backfilled',
+      strata: 'id, trenchId, code, type, topDepth',
+      artifacts: 'id, stratumId, code, category, date',
+      relations: 'id, unitAId, unitBId, type, basis',
+      samples: 'id, stratumId, code, type, submitDate',
+      meta: 'key'
+    })
   }
 }
 
@@ -229,6 +239,41 @@ export async function seedDemoData(): Promise<void> {
       basis: '剖面观察',
       recorder: '方铭',
       note: 'L01 叠压 L02，界面清晰'
+    }
+  ])
+
+  const daysAgo = (n: number): string => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10)
+
+  await db.samples.bulkPut([
+    {
+      id: 'sp_001',
+      stratumId: 'st_0501_h12',
+      code: 'T0501H12-炭01',
+      type: '炭样',
+      depth: 1.1,
+      collectDate: today,
+      collector: '祁野',
+      lab: '',
+      purpose: '',
+      submitDate: '',
+      dueDate: '',
+      logs: [],
+      note: 'H12 底部灰烬层采集，拟做碳十四测年'
+    },
+    {
+      id: 'sp_002',
+      stratumId: 'st_0501_l2',
+      code: 'T0501②-土01',
+      type: '土样',
+      depth: 0.4,
+      collectDate: daysAgo(22),
+      collector: '祁野',
+      lab: '省文物考古研究院科技考古实验室',
+      purpose: '浮选',
+      submitDate: daysAgo(20),
+      dueDate: daysAgo(10),
+      logs: [],
+      note: '第②层汉代文化层浮选土样'
     }
   ])
 }
