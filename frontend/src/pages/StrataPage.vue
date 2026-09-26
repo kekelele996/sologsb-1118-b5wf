@@ -11,12 +11,14 @@ import { stratumStore } from '@/stores/stratumStore'
 import { trenchStore } from '@/stores/trenchStore'
 import { artifactStore } from '@/stores/artifactStore'
 import { relationStore } from '@/stores/relationStore'
+import { sampleStore } from '@/stores/sampleStore'
 import { uid } from '@/utils/id'
 
 const trenchState = useStore(trenchStore)
 const stratumState = useStore(stratumStore)
 const artifactState = useStore(artifactStore)
 const relationState = useStore(relationStore)
+const sampleState = useStore(sampleStore)
 
 const { result: order } = useStratumOrder(
   computed(() => stratumState.strata),
@@ -176,8 +178,12 @@ async function remove(stratum: Stratum): Promise<void> {
   const relations = relationState.relations.filter(
     (item) => item.unitAId === stratum.id || item.unitBId === stratum.id
   ).length
-  if (count > 0 || relations > 0) {
-    ElMessage.error(`「${stratum.code}」下仍有 ${count} 件出土物、${relations} 条层位关系，请先清理`)
+  const sentSamples = sampleState.samples.filter((item) => item.stratumId === stratum.id && item.sendDate).length
+  const pendingSamples = sampleState.samples.filter((item) => item.stratumId === stratum.id && !item.sendDate).length
+  if (count > 0 || relations > 0 || sentSamples > 0 || pendingSamples > 0) {
+    ElMessage.error(
+      `「${stratum.code}」下仍有 ${count} 件出土物、${relations} 条层位关系、${sentSamples} 件已送检样品、${pendingSamples} 件待送检样品，请先清理`
+    )
     return
   }
   await ElMessageBox.confirm(`确认删除地层单位「${stratum.code}」？`, '删除确认', { type: 'warning' })

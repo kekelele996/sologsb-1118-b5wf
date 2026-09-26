@@ -1,22 +1,23 @@
 import { onUnmounted, reactive } from 'vue'
 import type { StoreApi } from 'zustand/vanilla'
 import Dexie, { type Table } from 'dexie'
-import type { Artifact, Relation, Stratum, Trench } from '@/types'
+import type { Artifact, Relation, Sample, Stratum, Trench } from '@/types'
 
 /** IndexedDB 数据结构版本号 */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export interface MetaRow {
   key: string
   value: number
 }
 
-/** Dexie 封装：探方 / 地层单位 / 出土物 / 层位关系 四张表 + 元数据表 */
+/** Dexie 封装：探方 / 地层单位 / 出土物 / 层位关系 / 送检样品 五张表 + 元数据表 */
 class TrenchLogDb extends Dexie {
   trenches!: Table<Trench, string>
   strata!: Table<Stratum, string>
   artifacts!: Table<Artifact, string>
   relations!: Table<Relation, string>
+  samples!: Table<Sample, string>
   meta!: Table<MetaRow, string>
 
   constructor() {
@@ -29,7 +30,7 @@ class TrenchLogDb extends Dexie {
       meta: 'key'
     })
     // v2：地层单位新增「开口层位」字段，迁移时为历史数据补齐默认值
-    this.version(SCHEMA_VERSION)
+    this.version(2)
       .stores({
         trenches: 'id, code, area, backfilled',
         strata: 'id, trenchId, code, type, topDepth',
@@ -50,6 +51,15 @@ class TrenchLogDb extends Dexie {
             }
           })
       })
+    // v3：新增样品送检台账表（新表无需迁移历史数据）
+    this.version(SCHEMA_VERSION).stores({
+      trenches: 'id, code, area, backfilled',
+      strata: 'id, trenchId, code, type, topDepth',
+      artifacts: 'id, stratumId, code, category, date',
+      relations: 'id, unitAId, unitBId, type, basis',
+      samples: 'id, trenchId, stratumId, code, sendDate',
+      meta: 'key'
+    })
   }
 }
 
@@ -229,6 +239,100 @@ export async function seedDemoData(): Promise<void> {
       basis: '剖面观察',
       recorder: '方铭',
       note: 'L01 叠压 L02，界面清晰'
+    }
+  ])
+
+  const offsetDate = (offsetDays: number): string => {
+    // 统一按 UTC 日历日偏移，与 new Date().toISOString() 取日期及催办天数计算口径一致
+    const date = new Date()
+    const base = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+    return new Date(base + offsetDays * 86400000).toISOString().slice(0, 10)
+  }
+
+  await db.samples.bulkPut([
+    {
+      id: 'sp_001',
+      code: 'T0501-C01',
+      trenchId: 'tr_0501',
+      stratumId: 'st_0501_h12',
+      type: '炭样',
+      depth: 0.9,
+      collectDate: offsetDate(-2),
+      collector: '祁野',
+      quantity: '2 袋 / 约 30g',
+      remark: 'H12 坑底灰烬集中处采集，拟送碳十四测年',
+      lab: '',
+      sendDate: '',
+      purpose: '',
+      expectedReceiveDate: '',
+      events: []
+    },
+    {
+      id: 'sp_002',
+      code: 'T0501-S02',
+      trenchId: 'tr_0501',
+      stratumId: 'st_0501_l2',
+      type: '土样',
+      depth: 0.45,
+      collectDate: offsetDate(-15),
+      collector: '祁野',
+      quantity: '500g',
+      remark: '第②层中部取样，浮选备用',
+      lab: '省文物考古研究院科技考古室',
+      sendDate: offsetDate(-12),
+      purpose: '浮选与植物考古分析',
+      expectedReceiveDate: offsetDate(-10),
+      events: []
+    },
+    {
+      id: 'sp_003',
+      code: 'T0502-P01',
+      trenchId: 'tr_0502',
+      stratumId: 'st_0502_l1',
+      type: '孢粉样',
+      depth: 0.15,
+      collectDate: offsetDate(-12),
+      collector: '方铭',
+      quantity: '200g',
+      remark: '耕土层下部，注意现代污染',
+      lab: '北大考古年代学实验室',
+      sendDate: offsetDate(-9),
+      purpose: '孢粉分析',
+      expectedReceiveDate: offsetDate(-5),
+      events: [
+        {
+          id: 'se_003_01',
+          type: '收样',
+          date: offsetDate(-3),
+          handler: '实验室值班员 周知',
+          note: '样品袋完整、标签清晰，已编号入库'
+        }
+      ]
+    },
+    {
+      id: 'sp_004',
+      code: 'T0501-S04',
+      trenchId: 'tr_0501',
+      stratumId: 'st_0501_l1',
+      type: '土样',
+      depth: 0.12,
+      collectDate: offsetDate(-20),
+      collector: '祁野',
+      quantity: '500g',
+      remark: '耕土层样，含水量偏高',
+      lab: '高校环境考古实验室',
+      sendDate: offsetDate(-18),
+      purpose: '粒度分析',
+      expectedReceiveDate: offsetDate(-14),
+      events: [
+        {
+          id: 'se_004_01',
+          type: '退样',
+          date: offsetDate(-8),
+          handler: '实验室收发 林岚',
+          note: '样品袋破损、污染严重，不符合检测要求，原件退回'
+        }
+      ]
     }
   ])
 }

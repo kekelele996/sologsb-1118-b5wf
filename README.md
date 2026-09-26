@@ -57,11 +57,11 @@ sologsb-1118/
 │   ├── nginx.conf              # try_files 前端路由回落 + gzip
 │   ├── public/favicon.svg
 │   └── src/
-│       ├── types/              # trench.ts / stratum.ts / artifact.ts / relation.ts / index.ts
-│       ├── stores/             # trenchStore / stratumStore / artifactStore / relationStore（Zustand）
+│       ├── types/              # trench.ts / stratum.ts / artifact.ts / relation.ts / sample.ts / index.ts
+│       ├── stores/             # trenchStore / stratumStore / artifactStore / relationStore / sampleStore（Zustand）
 │       ├── components/common/  # StratumDepthBar / RelationGraph / TrenchTag / UnitPicker
 │       ├── hooks/              # useStratumOrder / useRelationGraph / usePersistentStore
-│       ├── pages/              # TrenchesPage / StrataPage / ArtifactsPage / RelationsPage / SectionsPage
+│       ├── pages/              # TrenchesPage / StrataPage / ArtifactsPage / SamplesPage / RelationsPage / SectionsPage
 │       ├── router/index.ts
 │       └── utils/              # graph.ts / export.ts / id.ts
 ```
@@ -74,9 +74,11 @@ sologsb-1118/
 | Stratum 地层单位 | 单位号、类型（地层/灰坑/房址/沟/墓葬）、开口层位、上下界深度、土质土色、包含物、堆积成因、绘图拍照号 | `strata` |
 | Artifact 出土物 | 所属地层单位、器物编号、类别、件数、残整程度、探方内 X/Y/Z、出土日期、提取人、临时存放 | `artifacts` |
 | Relation 层位关系 | 单位 A、关系类型（叠压/打破/共存）、单位 B、判定依据、记录人、备注 | `relations` |
+| Sample 送检样品 | 样品号、所属探方/地层单位、种类（土样/炭样等）、采集深度、采集日期与采集人；确认送检后锁定实验室、送检日期、检测用途、约定收样日期；收样/退样台账事件按顺序追加 | `samples` |
 
 - 数据库名 `gbtrenchlog`，`meta` 表保存 `schemaVersion`；
 - `version(2)` 升级迁移会为历史地层单位补齐「开口层位」字段并规范包含物数组；
+- `version(3)` 新增样品送检台账表 `samples`（按 `trenchId / stratumId / code / sendDate` 建索引）；
 - 数据仅存于浏览器本地，容器无状态、不挂载命名卷。
 
 ## 六、主要页面
@@ -86,6 +88,7 @@ sologsb-1118/
 | `/trenches` | 探方清单：按「发掘区-探方号」校验唯一性，卡片显示单位数、出土物件数、关系数与发掘进度状态 |
 | `/strata` | 地层单位编目表：按类型与深度区间筛选，层序倒置与单位号重复即时高亮，深度刻度条展示厚度 |
 | `/artifacts` | 出土物登记与清单：先锁定所属地层单位（级联选择器），带出深度区间并校验出土深度是否在该区间内 |
+| `/samples` | 样品送检台账：从已有探方与地层单位选样登记（采集深度、样品号强校验）→ 确认送检锁定实验室/送检日期/检测用途 → 只能追加收样、退样记录；超约定收样日 7 天未收样自动催办 |
 | `/relations` | 层位关系视图：SVG 有向图展示叠压/打破，点击节点高亮直接关系，新增关系前做环路检测 |
 | `/sections` | 四壁剖面示意：按深度刻度绘制地层条带与厚度标注，叠加出土物投影点 |
 
@@ -97,3 +100,10 @@ sologsb-1118/
 - 若「A 叠压/打破 B」但 A 的上界深度大于 B，则提示层位关系与深度矛盾；
 - 新增层位关系前做**环路检测**（DFS），会形成闭合矛盾的关系直接拒绝保存；
 - 出土物的 Z（深度）必须落在其所属地层单位的深度区间内，否则给出层位核对提示。
+- 样品只能从**已有探方的已有地层单位**中选取登记；
+- 样品**采集深度必须落在所选地层单位的深度区间内**（含上下界），超出范围保存直接失败并提示核对层位；
+- **同一探方内样品号唯一**（大小写、首尾空白不敏感），重复样品号保存失败；
+- 送检前样品可任意修改或删除；**确认送检**时必须填齐实验室、送检日期、检测用途、约定收样日期，提交前二次确认；
+- 确认送检后记录**不可撤销**：不能修改登记/送检信息、不能删除、不能重复送检（store 层 `SampleLockedError` 兜底），后续**只能追加收样 / 退样记录**，台账按时间顺序留存；
+- 已送检样品占用其地层单位，该单位不可删除；
+- **催办提醒**：约定收样日期过后满 7 天仍无任何收样/退样回执，列表整行标红、页面顶部汇总催办（退样视为已有回执，不再催办）。
